@@ -826,6 +826,56 @@ func TestFixSchemaBytes_keepaliveIntervalNegative(t *testing.T) {
 	assert.NoError(t, err, "keepaliveInterval -1 (disable) should be accepted by the schema")
 }
 
+// TestValidateJSONSchema_DigestQualifiedContainer verifies raw schema validation
+// accepts secure SHA-256 image references and rejects malformed digests.
+func TestValidateJSONSchema_DigestQualifiedContainer(t *testing.T) {
+	validConfig := `{
+		"mcpServers": {"server": {"container": %q}},
+		"gateway": {"port": 8080, "domain": "localhost", "agentId": "test-key"}
+	}`
+
+	tests := []struct {
+		name      string
+		container string
+		shouldErr bool
+	}{
+		{
+			name:      "valid digest only",
+			container: "ghcr.io/example/mcp@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+		{
+			name:      "valid tag and digest",
+			container: "ghcr.io/example/mcp:v1.2.3@sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		},
+		{
+			name:      "rejects short digest",
+			container: "ghcr.io/example/mcp@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			shouldErr: true,
+		},
+		{
+			name:      "rejects wrong digest algorithm",
+			container: "ghcr.io/example/mcp@sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			shouldErr: true,
+		},
+		{
+			name:      "rejects malformed digest",
+			container: "ghcr.io/example/mcp@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaag",
+			shouldErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateJSONSchema([]byte(fmt.Sprintf(validConfig, tt.container)))
+			if tt.shouldErr {
+				require.Error(t, err, "expected raw JSON schema validation to fail")
+			} else {
+				assert.NoError(t, err, "expected raw JSON schema validation to pass")
+			}
+		})
+	}
+}
+
 // TestSchema_OpenTelemetryConfig verifies that the JSON schema accepts and rejects
 // opentelemetry configurations correctly, covering currently defined schema fields.
 func TestSchema_OpenTelemetryConfig(t *testing.T) {
